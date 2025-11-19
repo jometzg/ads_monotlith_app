@@ -409,3 +409,44 @@ erDiagram
         int Quantity
     }
 ```    
+
+### Component View
+```mermaid
+C4Context
+    title Component Architecture - RetailMonolith
+
+    Person(customer, "Customer", "Shops online")
+    
+    System_Boundary(monolith, "RetailMonolith Application") {
+        Container(web, "Razor Pages", "ASP.NET Core 9", "Handles UI and user interactions")
+        Container(api, "Minimal APIs", "ASP.NET Core 9", "REST endpoints")
+        Container(services, "Business Services", "C#", "Cart, Checkout, Payment logic")
+        ContainerDb(db, "SQL Server", "SQL Server 2019", "Stores products, carts, orders")
+    }
+    
+    Rel(customer, web, "Browses products, manages cart", "HTTPS")
+    Rel(customer, api, "Calls checkout/orders", "HTTPS/JSON")
+    Rel(web, services, "Uses")
+    Rel(api, services, "Uses")
+    Rel(services, db, "Reads/Writes", "EF Core")
+```
+
+### Deployment Architecture
+```mermaid
+graph LR
+    subgraph "Development Environment"
+        DevContainer["Dev Container<br/>- .NET 9 SDK<br/>- C# Extension"]
+        SQLContainer["SQL Server 2019<br/>- Port 1433<br/>- SA: P@ssw0rd"]
+    end
+    
+    subgraph "Application"
+        App["RetailMonolith<br/>- HTTPS: 7108<br/>- HTTP: 5068"]
+    end
+    
+    DevContainer -.network_mode: service.- SQLContainer
+    App -->|Connection String| SQLContainer
+    
+    style DevContainer fill:#e1f5ff
+    style SQLContainer fill:#fff4e1
+    style App fill:#f0f0f0
+```

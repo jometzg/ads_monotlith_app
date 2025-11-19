@@ -81,3 +81,8 @@ contents of the README, the contents of any key source files, the list of files 
 </StepsToFollow>
    - Document any errors encountered as well as the steps taken to work-around them.
 
+
+## Mermaid diagrams
+
+can you generate a mermaid diagram of the structure of the project
+
