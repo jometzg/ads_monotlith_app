@@ -217,3 +217,195 @@ These instructions are comprehensive and tested. Only perform additional searche
 - You need to understand implementation details beyond this architectural overview
 
 When in doubt, prioritize building with `dotnet build` and running with `dotnet run` - the application is designed to self-configure and auto-migrate.
+
+## Architecture Diagrams
+
+### System Architecture
+```mermaid
+graph TB
+    subgraph "Client Layer - Razor Pages"
+        Home["/Pages/Index.cshtml<br/>Home Page"]
+        Products["/Pages/Products/Index.cshtml<br/>Product Catalog"]
+        Cart["/Pages/Cart/Index.cshtml<br/>Shopping Cart"]
+        Checkout["/Pages/Checkout/Index.cshtml<br/>Checkout Flow"]
+        Orders["/Pages/Orders/Index.cshtml<br/>Order History"]
+        OrderDetails["/Pages/Orders/Details.cshtml<br/>Order Details"]
+    end
+
+    subgraph "Application Entry"
+        Program["Program.cs<br/>- Configure Services<br/>- Configure Middleware<br/>- Auto-migrate DB<br/>- Minimal APIs"]
+    end
+
+    subgraph "Service Layer - Business Logic"
+        ICartService["ICartService<br/>(Interface)"]
+        CartService["CartService<br/>- GetOrCreateCart<br/>- AddToCart<br/>- GetCartWithLines<br/>- ClearCart"]
+        
+        ICheckoutService["ICheckoutService<br/>(Interface)"]
+        CheckoutService["CheckoutService<br/>- CheckoutAsync"]
+        
+        IPaymentGateway["IPaymentGateway<br/>(Interface)"]
+        MockPaymentGateway["MockPaymentGateway<br/>- ProcessPayment<br/>(Always succeeds)"]
+    end
+
+    subgraph "Data Layer - EF Core"
+        AppDbContext["AppDbContext<br/>- Products DbSet<br/>- Inventory DbSet<br/>- Carts DbSet<br/>- CartLines DbSet<br/>- Orders DbSet<br/>- OrderLines DbSet<br/>- SeedAsync()"]
+        
+        DesignTimeFactory["DesignTimeDbContextFactory<br/>For EF Migrations"]
+    end
+
+    subgraph "Domain Models"
+        Product["Product<br/>- Id, Sku, Name<br/>- Price, Currency<br/>- Category, IsActive"]
+        Inventory["InventoryItem<br/>- Id, Sku<br/>- Quantity"]
+        CartModel["Cart<br/>- Id, CustomerId"]
+        CartLine["CartLine<br/>- Sku, Name<br/>- UnitPrice, Quantity"]
+        Order["Order<br/>- Id, CreatedUtc<br/>- CustomerId, Status<br/>- Total"]
+        OrderLine["OrderLine<br/>- Sku, Name<br/>- UnitPrice, Quantity"]
+    end
+
+    subgraph "Database - SQL Server"
+        ProductsTable[("Products Table<br/>Sku: Unique Index")]
+        InventoryTable[("Inventory Table<br/>Sku: Unique Index")]
+        CartsTable[("Carts Table")]
+        CartLinesTable[("CartLines Table<br/>FK: CartId")]
+        OrdersTable[("Orders Table")]
+        OrderLinesTable[("OrderLines Table<br/>FK: OrderId")]
+    end
+
+    subgraph "API Endpoints"
+        CheckoutAPI["/api/checkout<br/>(POST)"]
+        OrdersAPI["/api/orders/{id}<br/>(GET)"]
+        HealthAPI["/health<br/>(GET)"]
+    end
+
+    subgraph "Configuration"
+        AppSettings["appsettings.json<br/>- Logging<br/>- AllowedHosts"]
+        AppSettingsDev["appsettings.Development.json<br/>- ConnectionStrings<br/>- DetailedErrors"]
+        LaunchSettings["launchSettings.json<br/>- Ports: 7108/5068"]
+    end
+
+    subgraph "Static Assets"
+        wwwroot["wwwroot/<br/>- CSS (site.css)<br/>- JS (site.js)<br/>- Bootstrap<br/>- jQuery"]
+    end
+
+    %% Client to Service connections
+    Products -->|uses| ICartService
+    Cart -->|uses| ICartService
+    Checkout -->|uses| ICheckoutService
+    Orders -->|queries| AppDbContext
+    OrderDetails -->|queries| AppDbContext
+
+    %% Service implementations
+    ICartService -.implements.- CartService
+    ICheckoutService -.implements.- CheckoutService
+    IPaymentGateway -.implements.- MockPaymentGateway
+
+    %% Service dependencies
+    CartService -->|uses| AppDbContext
+    CheckoutService -->|uses| AppDbContext
+    CheckoutService -->|uses| ICartService
+    CheckoutService -->|uses| IPaymentGateway
+
+    %% Program configures everything
+    Program -->|registers| ICartService
+    Program -->|registers| ICheckoutService
+    Program -->|registers| IPaymentGateway
+    Program -->|configures| AppDbContext
+    Program -->|hosts| CheckoutAPI
+    Program -->|hosts| OrdersAPI
+    Program -->|hosts| HealthAPI
+    Program -->|auto-migrates| AppDbContext
+
+    %% API uses services
+    CheckoutAPI -->|uses| ICheckoutService
+    OrdersAPI -->|queries| AppDbContext
+
+    %% DbContext to Models
+    AppDbContext -->|manages| Product
+    AppDbContext -->|manages| Inventory
+    AppDbContext -->|manages| CartModel
+    AppDbContext -->|manages| CartLine
+    AppDbContext -->|manages| Order
+    AppDbContext -->|manages| OrderLine
+
+    %% Models to Tables
+    Product -.maps to.- ProductsTable
+    Inventory -.maps to.- InventoryTable
+    CartModel -.maps to.- CartsTable
+    CartLine -.maps to.- CartLinesTable
+    Order -.maps to.- OrdersTable
+    OrderLine -.maps to.- OrderLinesTable
+
+    %% Configuration
+    Program -->|reads| AppSettings
+    Program -->|reads| AppSettingsDev
+    AppDbContext -->|connection string| AppSettingsDev
+
+    %% Relationships
+    CartModel -->|has many| CartLine
+    Order -->|has many| OrderLine
+
+    style Program fill:#ff9999
+    style AppDbContext fill:#99ccff
+    style ICartService fill:#99ff99
+    style ICheckoutService fill:#99ff99
+    style IPaymentGateway fill:#99ff99
+    style ProductsTable fill:#ffff99
+    style CartsTable fill:#ffff99
+    style OrdersTable fill:#ffff99
+```
+
+### Database Schema
+```mermaid
+erDiagram
+    Products ||--o{ Inventory : "identified by SKU"
+    Carts ||--|{ CartLines : "contains"
+    Orders ||--|{ OrderLines : "contains"
+    
+    Products {
+        int Id PK
+        string Sku UK "Unique"
+        string Name
+        string Description
+        decimal Price
+        string Currency
+        bool IsActive
+        string Category
+    }
+    
+    Inventory {
+        int Id PK
+        string Sku UK "Unique"
+        int Quantity
+    }
+    
+    Carts {
+        int Id PK
+        string CustomerId "hardcoded: guest"
+    }
+    
+    CartLines {
+        int Id PK
+        int CartId FK
+        string Sku "denormalized"
+        string Name "denormalized"
+        decimal UnitPrice "price snapshot"
+        int Quantity
+    }
+    
+    Orders {
+        int Id PK
+        datetime CreatedUtc
+        string CustomerId
+        string Status "Created|Paid|Failed|Shipped"
+        decimal Total
+    }
+    
+    OrderLines {
+        int Id PK
+        int OrderId FK
+        string Sku "denormalized"
+        string Name "denormalized"
+        decimal UnitPrice "price snapshot"
+        int Quantity
+    }
+```    
